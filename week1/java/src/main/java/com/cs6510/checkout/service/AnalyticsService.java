@@ -8,6 +8,8 @@ import com.cs6510.checkout.repository.InventoryRepository;
 import com.cs6510.checkout.repository.PopularItemRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,12 +30,13 @@ public class AnalyticsService {
     private final int windowSize;
     private final int slideInterval;
 
-    // In-memory circular window of the last `windowSize` scanned SKUs.
     private final ArrayDeque<String> scanWindow;
     private final ReentrantLock      windowLock = new ReentrantLock();
+    private final AtomicLong         scanCounter = new AtomicLong(0);
 
-    // Global scan sequence number — monotonically increasing.
-    private final AtomicLong scanCounter = new AtomicLong(0);
+    // Self-reference through Spring proxy so @Async is honoured on internal calls.
+    @Lazy @Autowired
+    private AnalyticsService self;
 
     public AnalyticsService(PopularItemRepository popularItemRepo,
                             InventoryRepository inventoryRepo,
@@ -46,63 +49,52 @@ public class AnalyticsService {
     }
 
     /**
-     * Records a scan in the sliding window and triggers a recompute every
-     * {@code slideInterval} scans. The recompute runs asynchronously so it
-     * never adds latency to the scan response.
+     * Records a scan. Every slideInterval scans a snapshot is taken atomically
+     * under the window lock and handed to the async worker through the Spring proxy,
+     * so the @Async annotation actually fires a background thread.
      */
     public void recordScan(String sku) {
-        long count = scanCounter.incrementAndGet();
+        List<String> snapshot = null;
+        long count;
 
         windowLock.lock();
         try {
+            count = scanCounter.incrementAndGet();
             scanWindow.addLast(sku);
-            if (scanWindow.size() > windowSize) {
-                scanWindow.pollFirst();
+            if (scanWindow.size() > windowSize) scanWindow.pollFirst();
+            if (count % slideInterval == 0) {
+                snapshot = new ArrayList<>(scanWindow);
             }
         } finally {
             windowLock.unlock();
         }
 
-        // Exactly one thread will ever get a count divisible by slideInterval.
-        if (count % slideInterval == 0) {
-            computeAndPersist(count);
+        if (snapshot != null) {
+            self.computeAndPersist(snapshot, count);
         }
     }
 
-    /** Runs on the dedicated analytics executor thread — never blocks a scan response. */
+    /** Runs on the dedicated analytics executor — never blocks a scan response. */
     @Async("analyticsExecutor")
     @Transactional
-    public void computeAndPersist(long endCount) {
-        List<String> snapshot;
-        windowLock.lock();
-        try {
-            snapshot = new ArrayList<>(scanWindow);
-        } finally {
-            windowLock.unlock();
-        }
-
+    public void computeAndPersist(List<String> snapshot, long endCount) {
         if (snapshot.isEmpty()) return;
 
-        // Count scan frequency per SKU.
         Map<String, Long> freq = snapshot.stream()
                 .collect(Collectors.groupingBy(s -> s, Collectors.counting()));
 
-        // Sort by count descending, take top 10.
         List<Map.Entry<String, Long>> top = freq.entrySet().stream()
                 .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
                 .limit(10)
                 .toList();
 
-        // Resolve names from inventory (best-effort; unknown SKU gets placeholder).
         long windowStart = Math.max(1L, endCount - windowSize + 1);
         Instant now      = Instant.now();
 
-        // Build entities, replacing the whole snapshot atomically.
         List<PopularItem> rows = new ArrayList<>(top.size());
         for (int i = 0; i < top.size(); i++) {
             String sku   = top.get(i).getKey();
             int    count = top.get(i).getValue().intValue();
-            // name comes from the cached catalog; fall back to sku if not found
             String name  = inventoryRepo.findById(sku)
                                .map(inv -> inv.getName())
                                .orElse(sku);
@@ -117,13 +109,11 @@ public class AnalyticsService {
         log.debug("Popular-items window [{}-{}] persisted ({} items)", windowStart, endCount, rows.size());
     }
 
-    /** Returns the latest persisted window. */
     @Transactional(readOnly = true)
     public PopularItemsResponseDto getPopularItems(int limit) {
         List<PopularItem> rows = popularItemRepo.findAllByOrderByRankAsc();
 
         if (rows.isEmpty()) {
-            // No window computed yet (too few scans so far).
             return new PopularItemsResponseDto(
                     windowSize, slideInterval, 0, 0, Instant.now(), List.of());
         }
@@ -140,12 +130,10 @@ public class AnalyticsService {
                 meta.getComputedAt(), items);
     }
 
-    /** Returns the current global scan counter value (for window boundary tracking). */
     public long getScanCount() {
         return scanCounter.get();
     }
 
-    /** Admin reset — wipes the in-memory window and DB snapshot. */
     @Transactional
     public void reset() {
         windowLock.lock();

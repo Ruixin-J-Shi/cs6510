@@ -49,7 +49,7 @@
 
 **Requirement:** p99 complete-transaction under 500 ms at default load; p95 under 2 s at stress load.
 
-**Implementation decision:** Spring Boot 3.3 with Java 21 virtual threads (`spring.threads.virtual.enabled=true`) is used so that 100 concurrent blocking DB calls consume no OS threads. The item catalog is cached in memory after the first request so `GET /items` is essentially free on every subsequent call. The sliding window for popular items is maintained as an in-memory deque and only flushed to the database every 500 scans, keeping the hot scan path to a single INSERT per scan rather than a window query.
+**Implementation decision:** Spring Boot 3.3 with Java 21 virtual threads (`spring.threads.virtual.enabled=true`) is used so that 100 concurrent blocking DB calls consume far fewer OS carrier threads than traditional thread-per-request models. The item catalog is cached in memory after the first request so `GET /items` is essentially free on every subsequent call. The sliding window for popular items is maintained as an in-memory deque and flushed asynchronously to the database every 500 scans; each scan still requires a transaction read and update in addition to the item INSERT.
 
 **Trade-off:** Transaction items are stored in the database (not in memory) to satisfy Data Integrity. This costs one extra DB round-trip per scan compared to a pure in-memory basket. The latency cost is visible in the stress-run numbers and is a deliberate architectural choice.
 
@@ -59,7 +59,7 @@
 
 **Requirement:** Each concern (catalog, transactions, inventory, analytics) must live in its own clearly bounded layer with no cross-cutting dependencies so the codebase can be adapted to a different architecture style each week.
 
-**Implementation decision:** Controllers delegate to services; services delegate to repositories. No controller touches a repository directly. No service imports another service (except `TransactionService` calling `AnalyticsService.recordScan`, which is a deliberate one-way dependency). The PostgreSQL schema is managed by a plain SQL init script rather than embedded migrations, so the same schema file is shared across any language implementation.
+**Implementation decision:** Controllers delegate to services; services delegate to repositories. `AdminController` is the deliberate exception — it coordinates a cross-cutting reset and accesses repositories directly rather than routing through a service layer. No service imports another service except `TransactionService` calling `AnalyticsService.recordScan`, which is a deliberate one-way dependency. The PostgreSQL schema is managed by a plain SQL init script rather than embedded migrations, so the same schema file is shared across any language implementation.
 
 **Trade-off:** The layered structure adds boilerplate — interfaces, DTOs, repository classes — that a single-class monolith would not need. This slightly increases initial code volume for week 1, in exchange for predictability in weeks 2–6 when the architecture changes but the business logic does not.
 
@@ -85,4 +85,4 @@ Throughput: **74.7 transactions/sec**, **781.5 items/sec** — 0 % error rate.
 | SCAN_ITEM            |59865 |      0 |  141.4  |  109.0 |   309.7 |   666.4 |
 | COMPLETE_TRANSACTION | 5674 |     14 |  590.1  |  211.1 | 2 633.0 | 5 630.8 |
 
-Throughput: **43.2 transactions/sec** — 0.25 % error rate (14 timeouts on complete-transaction, caused by lock contention on the most popular SKUs under 100-station load — see Data Integrity trade-off above).
+Throughput: **43.2 transactions/sec** — 0.25 % error rate (14 timeouts on complete-transaction, caused by lock contention on the most popular SKUs under 100-station load — see Data Integrity trade-off above). The complete-transaction p95 of 2,633 ms exceeds the 2,000 ms self-imposed target; this is a consequence of the row-level locking strategy and is acknowledged as a trade-off against correctness.

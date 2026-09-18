@@ -58,7 +58,7 @@ public class TransactionService {
 
     @Transactional
     public ScanResultDto scanItem(String transactionId, ScanItemRequest req) {
-        Transaction tx = txRepo.findById(transactionId)
+        Transaction tx = txRepo.findByIdForUpdate(transactionId)
                 .orElseThrow(() -> new TransactionNotFoundException(transactionId));
 
         if (!"OPEN".equals(tx.getStatus())) {
@@ -95,7 +95,7 @@ public class TransactionService {
 
     @Transactional
     public ReceiptDto completeTransaction(String transactionId) {
-        Transaction tx = txRepo.findById(transactionId)
+        Transaction tx = txRepo.findByIdForUpdate(transactionId)
                 .orElseThrow(() -> new TransactionNotFoundException(transactionId));
 
         if (!"OPEN".equals(tx.getStatus())) {
@@ -119,10 +119,7 @@ public class TransactionService {
             int updated = inventoryRepo.decrementStock(
                     entry.getKey(), entry.getValue(), lowStockThreshold);
             if (updated == 0) {
-                // Stock too low — log a warning. In a real system we'd reject, but
-                // the spec says payment always succeeds and this won't happen in tests.
-                org.slf4j.LoggerFactory.getLogger(getClass())
-                        .warn("Insufficient stock for SKU {} (qty {})", entry.getKey(), entry.getValue());
+                throw new InsufficientStockException(entry.getKey());
             }
         }
 
