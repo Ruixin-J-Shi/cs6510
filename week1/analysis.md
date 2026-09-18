@@ -3,7 +3,7 @@
 
 ---
 
-## Architectural Characteristics
+## Architectural Picks
 
 **Performance**
 - Each of the three primary operations (start transaction, scan item, complete transaction) must complete in under 500 ms at p99 under default load (10 stations, 60 s).
