@@ -1,0 +1,40 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/checkout
+    username: checkout
+    password: checkout
+    hikari:
+      maximum-pool-size: 30
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+
+  jpa:
+    hibernate:
+      ddl-auto: none          # schema managed by Docker init scripts
+    open-in-view: false       # never hold a DB connection across the HTTP response write
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false  # ISO-8601 strings for all Instant fields
+    default-property-inclusion: non_null
+
+  threads:
+    virtual:
+      enabled: true           # Project Loom virtual threads — handles 100+ concurrent stations cheaply
+
+server:
+  port: 8080
+
+checkout:
+  low-stock-threshold: 50
+  window-size: 1000
+  slide-interval: 500

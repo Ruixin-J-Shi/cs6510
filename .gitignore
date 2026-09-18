@@ -1,0 +1,20 @@
+# Instructor repo clone — not part of this submission
+CS6510-2026/
+
+# Java / Maven
+week1/java/target/
+week1/java/.mvn/
+*.class
+*.jar
+
+# Rust
+week1/rust/target/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.DS_Store
+
+# Docker volumes baked into compose down -v
+pgdata/
