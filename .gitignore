@@ -18,3 +18,7 @@ week1/rust/target/
 
 # Docker volumes baked into compose down -v
 pgdata/
+
+# Local learning / notes — not part of submission
+ccgenerate/
+week1/rust/
