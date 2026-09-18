@@ -11,9 +11,9 @@ week1/                    ← Week 1: Monolithic implementation
   db/
     init.sql              ← Schema (inventory, transactions, transaction_items, popular_items)
     seed.sql              ← 2000 SKUs at 10 000 stock each
-    reset.sh              ← Full DB wipe + reseed (Docker volume reset)
+    reset.sh              ← reset
   docker-compose.yml      ← PostgreSQL 16 on port 5433
-  analysis.md             ← Architectural characteristics analysis + load-test results
+  analysis.md             ← analysis + load-test results
   reports/
     report-*-default.json ← 10 stations, 60 s
     report-*-stress.json  ← 100 stations, 120 s
