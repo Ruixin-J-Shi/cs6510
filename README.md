@@ -3,6 +3,11 @@
 Each week reimplements the same self-checkout API in a different architecture style.
 The load client and OpenAPI contract never change — only the server architecture does.
 
+Week 1 is one Spring Boot application containing checkout, inventory, catalog,
+and analytics. Its controller/service/repository packages and background analytics
+worker run in the same process and deploy together. PostgreSQL stores the data
+in a separate container; the application remains a monolith.
+
 ## Repository layout
 
 ```
@@ -15,42 +20,70 @@ week1/                    ← Week 1: Monolithic implementation
   docker-compose.yml      ← PostgreSQL 16 on port 5433
   analysis.md             ← analysis + load-test results
   reports/
-    report-*-default.json ← 10 stations, 60 s
-    report-*-stress.json  ← 100 stations, 120 s
+    report-*.json          ← Timestamped default and stress results
 ```
 
 ## Week 1 — Quick start
 
+Requires JDK 21, Maven, Docker, and Git. Run these commands from the repository
+root, using a separate terminal for the server. The report filenames and measured
+results for the current implementation are listed in `week1/analysis.md`.
+
 ### 1. Start the database
 ```bash
-cd week1
-docker compose up -d
+docker compose -f week1/docker-compose.yml up -d
 ```
 
 ### 2. Start the server
 ```bash
-cd week1/java
-mvn spring-boot:run
+mvn -f week1/java/pom.xml spring-boot:run
 ```
 Server listens on **http://localhost:8080**.
 
-### 3. Run the load client (from the course repo)
-```bash
-# Default run
-java -cp out Main --baseUrl=http://localhost:8080 --stations=10 --duration=60
+### 3. Build the instructor's load client
 
-# Stress run
-java -cp out Main --baseUrl=http://localhost:8080 --stations=100 --duration=120
+Clone the course repository if `CS6510-2026` is not already present:
+
+```bash
+git clone https://github.com/gortonator/CS6510-2026.git CS6510-2026
+bash CS6510-2026/load-client/build.sh
 ```
 
-### 4. Reset between runs
+Alternatively, compile in PowerShell:
+
+```powershell
+$clientSources = Get-ChildItem CS6510-2026/load-client/src -Filter *.java | Select-Object -ExpandProperty FullName
+javac -d CS6510-2026/load-client/out $clientSources
+```
+
+### 4. Run the required tests
+
+Stop any previous load run before resetting. In PowerShell, use `curl.exe`
+instead of `curl` for these reset commands.
+
+```bash
+# Default run
+curl -X POST http://localhost:8080/admin/reset
+java -cp CS6510-2026/load-client/out Main --reportDir=week1/reports
+
+# Stress run
+curl -X POST http://localhost:8080/admin/reset
+java -cp CS6510-2026/load-client/out Main --stations=100 --duration=120 --reportDir=week1/reports
+```
+
+### 5. Reset between runs
 ```bash
 # Quick reset (no Docker restart needed)
 curl -X POST http://localhost:8080/admin/reset
 
 # Full reset (wipes DB volume and reseeds)
-cd week1 && bash db/reset.sh
+bash week1/db/reset.sh
 ```
+
+The quick reset waits for pending analytics writes before clearing the window
+and restoring all 2,000 stock levels to 10,000. Use reset between runs, with
+checkout traffic stopped. Insufficient stock returns HTTP 409 and rolls back
+the entire completion; payment simulation never permits negative stock.
 
 ## API endpoints (OpenAPI spec in CS6510-2026/spec/)
 

@@ -9,10 +9,11 @@ import com.cs6510.checkout.repository.*;
 import com.cs6510.checkout.config.AppConfig;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.Instant;
 import java.util.*;
-import java.util.stream.Collectors;
 
 @Service
 public class TransactionService {
@@ -71,14 +72,16 @@ public class TransactionService {
         // Persist the scanned item.
         txItemRepo.save(new TransactionItem(transactionId, item.getSku(), item.getName(), item.getPrice()));
 
-        // Each transaction belongs to exactly one station (one thread), so a
-        // read-modify-write is safe — no concurrent scan for the same txId.
         tx.setItemCount(tx.getItemCount() + 1);
         tx.setRunningTotal(Math.round((tx.getRunningTotal() + item.getPrice()) * 100.0) / 100.0);
         txRepo.save(tx);
 
-        // Record in the analytics sliding window (triggers async persist every slideInterval).
-        analyticsService.recordScan(req.sku());
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                analyticsService.recordScan(req.sku());
+            }
+        });
 
         return new ScanResultDto(
                 transactionId,

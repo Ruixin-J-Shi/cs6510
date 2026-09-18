@@ -20,7 +20,7 @@ public interface InventoryRepository extends JpaRepository<Inventory, String> {
      *
      * @return 1 if the decrement succeeded (stock was >= quantity), 0 otherwise.
      */
-    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Modifying(flushAutomatically = true)
     @Query(value = """
         UPDATE inventory
         SET stock        = stock - :quantity,

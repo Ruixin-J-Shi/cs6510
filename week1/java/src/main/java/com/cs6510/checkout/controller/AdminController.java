@@ -47,11 +47,11 @@ public class AdminController {
     @PostMapping("/reset")
     @Transactional
     public ResponseEntity<Map<String, Object>> reset() {
+        analyticsService.reset();
         // Order matters: items before transactions (FK constraint)
         txItemRepo.truncateAll();
         txRepo.truncateAll();
         inventoryRepo.resetAllStock(10000);
-        analyticsService.reset();
         catalogService.evictCatalogCache(cacheManager);
 
         long count = inventoryRepo.count();

@@ -26,16 +26,13 @@ public class AppConfig {
     public int getWindowSize()        { return windowSize; }
     public int getSlideInterval()     { return slideInterval; }
 
-    /**
-     * Executor for @Async tasks (sliding-window computation).
-     * A small dedicated pool keeps window computation off the request threads.
-     */
     @Bean(name = "analyticsExecutor")
     public Executor analyticsExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(4);
-        executor.setQueueCapacity(100);
+        executor.setCorePoolSize(1);
+        executor.setMaxPoolSize(1);
+        executor.setWaitForTasksToCompleteOnShutdown(true);
+        executor.setAwaitTerminationSeconds(30);
         executor.setThreadNamePrefix("analytics-");
         executor.initialize();
         return executor;
