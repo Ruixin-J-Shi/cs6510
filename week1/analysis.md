@@ -33,9 +33,9 @@
 
 ---
 
-## Top 3 Prioritized Characteristics
+## Prioritized
 
-### 1. Data Integrity (highest priority)
+### 1. Data Integrity
 
 **Requirement:** No SKU's stock goes negative; the decrement invariant holds under concurrent load.
 
@@ -45,7 +45,7 @@
 
 ---
 
-### 2. Performance (second priority)
+### 2. Performance
 
 **Requirement:** p99 complete-transaction under 500 ms at default load; p95 under 2 s at stress load.
 
@@ -55,7 +55,7 @@
 
 ---
 
-### 3. Modularity (third priority)
+### 3. Modularity
 
 **Requirement:** Keep catalog, checkout, inventory, and analytics responsibilities in separate classes with explicit dependencies, while deploying them as one monolithic application.
 
